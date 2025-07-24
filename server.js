@@ -40,7 +40,6 @@ app.post('/generate-report', async (req, res) => {
       status: 'Processing',
       progress: 10,
     });
-
     // Enhanced browser launch configuration for cloud environments
     const launchOptions = {
       headless: true,
@@ -58,34 +57,10 @@ app.post('/generate-report', async (req, res) => {
       ],
     };
 
-    // Check for Puppeteer's downloaded Chrome first
-    const fs = require('fs');
-    const path=require('path')
-    console.log('Checking Puppeteer cache directory...');
-    const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
-    console.log('Cache directory:', cacheDir);
-    
-    try {
-      if (fs.existsSync(cacheDir)) {
-        const chromeDir = path.join(cacheDir, 'chrome');
-        if (fs.existsSync(chromeDir)) {
-          const versions = fs.readdirSync(chromeDir);
-          console.log('Available Chrome versions:', versions);
-          
-          if (versions.length > 0) {
-            // Use the first available version
-            const versionDir = path.join(chromeDir, versions[0]);
-            const chromePath = path.join(versionDir, 'chrome-linux64', 'chrome');
-            
-            if (fs.existsSync(chromePath)) {
-              console.log('Found Chrome at:', chromePath);
-              launchOptions.executablePath = chromePath;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.log('Error checking cache directory:', error.message);
+    // Use the Chrome path set by startup script
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      console.log('Using Chrome path from environment:', process.env.PUPPETEER_EXECUTABLE_PATH);
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
     console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
@@ -164,12 +139,12 @@ app.post('/generate-report', async (req, res) => {
     browser = null;
 
     const filename = `report-${jobId}.pdf`;
-    const pdfPath = `${brandId}/${filename}`;
+    const path = `${brandId}/${filename}`;
 
     const { error: uploadError } = await supabase
       .storage
       .from('Creatives/brand-uploaded')
-      .upload(pdfPath, pdfBuffer, {
+      .upload(path, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: true,
       });
@@ -179,7 +154,7 @@ app.post('/generate-report', async (req, res) => {
     const { data: publicUrl } = supabase
       .storage
       .from('Creatives/brand-uploaded')
-      .getPublicUrl(pdfPath);
+      .getPublicUrl(path);
 
     await ReportStorage.updateJob(jobId, {
       status: 'Download',
