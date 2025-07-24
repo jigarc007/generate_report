@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { ReportStorage } = require('./reportStorage');
@@ -41,26 +41,18 @@ app.post('/generate-report', async (req, res) => {
       status: 'Processing',
       progress: 10,
     });
-    // Enhanced browser launch configuration for cloud environments
+    
     const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
       ],
-      executablePath: puppeteer.executablePath(),
     };
-    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
-    browser = await puppeteer.launch(launchOptions);
 
+    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
+
+    browser = await chromium.launch(launchOptions);
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(

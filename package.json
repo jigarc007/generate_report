@@ -5,16 +5,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "postinstall": "puppeteer install",
-    "prestart": "puppeteer install"
+    "dev": "nodemon server.js"
  },
   "dependencies": {
     "express": "^4.18.2",
     "body-parser": "^1.20.2",
-    "puppeteer-core": "^22.11.0",
     "dotenv": "^16.3.1",
-    "@supabase/supabase-js": "^2.38.4"
+    "@supabase/supabase-js": "^2.38.4",
+    "playwright": "^1.44.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
