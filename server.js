@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { chromium } = require('playwright');
+const puppeteer = require('puppeteer');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { ReportStorage } = require('./reportStorage');
@@ -13,7 +13,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
 
 app.post('/generate-report', async (req, res) => {
   let browser;
@@ -41,18 +40,31 @@ app.post('/generate-report', async (req, res) => {
       status: 'Processing',
       progress: 10,
     });
-    
+
+    // Determine the executable path based on the environment
+    // For Render with Docker, Chrome is installed at /usr/bin/google-chrome
+    const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+
+    // Enhanced browser launch configuration for cloud environments
     const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
       ],
+      executablePath: executablePath, // Use the dynamically determined path
     };
-
     console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
+    browser = await puppeteer.launch(launchOptions);
 
-    browser = await chromium.launch(launchOptions);
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(
