@@ -96,13 +96,11 @@ app.post('/generate-report', async (req, res) => {
 
     console.log('Navigating...');
     await page.goto(reportUrl, {
-      waitUntil: 'networkidle0',
-      timeout: 160000,
+      waitUntil: 'networkidle2',
+      timeout: 180000,
     });
 
     await new Promise(resolve => setTimeout(resolve, 5000));
-
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 30 });
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
