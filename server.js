@@ -60,8 +60,7 @@ app.post('/generate-report', async (req, res) => {
 
     // Check for Puppeteer's downloaded Chrome first
     const fs = require('fs');
-    const path = require('path');
-    
+    const path=require('path')
     console.log('Checking Puppeteer cache directory...');
     const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
     console.log('Cache directory:', cacheDir);
@@ -165,12 +164,12 @@ app.post('/generate-report', async (req, res) => {
     browser = null;
 
     const filename = `report-${jobId}.pdf`;
-    const path = `${brandId}/${filename}`;
+    const pdfPath = `${brandId}/${filename}`;
 
     const { error: uploadError } = await supabase
       .storage
       .from('Creatives/brand-uploaded')
-      .upload(path, pdfBuffer, {
+      .upload(pdfPath, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: true,
       });
@@ -180,7 +179,7 @@ app.post('/generate-report', async (req, res) => {
     const { data: publicUrl } = supabase
       .storage
       .from('Creatives/brand-uploaded')
-      .getPublicUrl(path);
+      .getPublicUrl(pdfPath);
 
     await ReportStorage.updateJob(jobId, {
       status: 'Download',
