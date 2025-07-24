@@ -128,6 +128,7 @@ app.post('/generate-report', async (req, res) => {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
+      timeout: 120000,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
     console.log({pdfBuffer})
