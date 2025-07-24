@@ -32,7 +32,18 @@ app.post('/generate-report', async (req, res) => {
       timeZone,
       baseURL
     } = req.body;
-
+    console.log('payload body:>',{
+      requestJobId,
+      brandId,
+      campaignIds,
+      fromDate,
+      toDate,
+      locationIds,
+      homePageDetails,
+      logo,
+      currency,
+      timeZone,
+      baseURL});
     jobId = requestJobId;
     console.log("Processing job:", jobId);
 
@@ -131,7 +142,6 @@ app.post('/generate-report', async (req, res) => {
       timeout: 120000,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
-    console.log({pdfBuffer})
     await browser.close();
     browser = null;
 
