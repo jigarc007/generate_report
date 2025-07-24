@@ -59,6 +59,7 @@ app.post('/generate-report', async (req, res) => {
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
+        '--disable-gpu'
       ],
       executablePath: executablePath, // Use the dynamically determined path
     };
@@ -96,7 +97,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Navigating...');
     await page.goto(reportUrl, {
       waitUntil: 'networkidle0',
-      timeout: 120000,
+      timeout: 160000,
     });
 
     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -116,7 +117,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Waiting for charts...');
     for (const selector of chartSelectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 60000 });
+        await page.waitForSelector(selector, { timeout: 120000 });
         console.log(`Loaded: ${selector}`);
       } catch {
         console.warn(`Failed to load: ${selector}`);
@@ -148,8 +149,10 @@ app.post('/generate-report', async (req, res) => {
         upsert: true,
       });
 
-    if (uploadError) throw uploadError;
-
+    if (uploadError){
+    console.log({uploadError})
+      throw uploadError;
+    }
     const { data: publicUrl } = supabase
       .storage
       .from('Creatives/brand-uploaded')
