@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: generate-report
+    env: node
+    plan: starter
+    buildCommand: npm install && npx puppeteer browsers install chrome --platform=linux
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /opt/render/.cache/puppeteer/chrome/linux-138.0.7204.168/chrome-linux64/chrome

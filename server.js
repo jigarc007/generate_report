@@ -58,43 +58,39 @@ app.post('/generate-report', async (req, res) => {
       ],
     };
 
-    // Try different approaches based on environment
-    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-      // For Render and other cloud platforms
-      try {
-        // First try with executablePath if Chrome is installed
-        if (process.env.CHROME_EXECUTABLE_PATH) {
-          launchOptions.executablePath = process.env.CHROME_EXECUTABLE_PATH;
-        } else {
-          // Try common Chrome paths on Linux
-          const fs = require('fs');
-          const chromePaths = [
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/opt/google/chrome/chrome',
-          ];
+    // Check for Puppeteer's downloaded Chrome first
+    const fs = require('fs');
+    const path = require('path');
+    
+    console.log('Checking Puppeteer cache directory...');
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+    console.log('Cache directory:', cacheDir);
+    
+    try {
+      if (fs.existsSync(cacheDir)) {
+        const chromeDir = path.join(cacheDir, 'chrome');
+        if (fs.existsSync(chromeDir)) {
+          const versions = fs.readdirSync(chromeDir);
+          console.log('Available Chrome versions:', versions);
           
-          for (const path of chromePaths) {
-            if (fs.existsSync(path)) {
-              launchOptions.executablePath = path;
-              break;
+          if (versions.length > 0) {
+            // Use the first available version
+            const versionDir = path.join(chromeDir, versions[0]);
+            const chromePath = path.join(versionDir, 'chrome-linux64', 'chrome');
+            
+            if (fs.existsSync(chromePath)) {
+              console.log('Found Chrome at:', chromePath);
+              launchOptions.executablePath = chromePath;
             }
           }
         }
-        
-        browser = await puppeteer.launch(launchOptions);
-      } catch (error) {
-        console.log('Failed to launch with system Chrome, trying Puppeteer bundled Chrome...');
-        // Fallback: ensure Puppeteer downloads its own Chrome
-        delete launchOptions.executablePath;
-        browser = await puppeteer.launch(launchOptions);
       }
-    } else {
-      // Local development
-      browser = await puppeteer.launch(launchOptions);
+    } catch (error) {
+      console.log('Error checking cache directory:', error.message);
     }
+
+    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
