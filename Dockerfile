@@ -5,7 +5,7 @@ FROM node:18-slim
 WORKDIR /app
 
 # Install necessary packages for Puppeteer and for adding GPG keys
-# Revised list of dependencies for modern Debian (Bookworm)
+# Further refined list of dependencies for modern Debian (Bookworm)
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -38,18 +38,10 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     xdg-utils \
     lsb-release \
-    # Ensure all recommended fonts are available
-    # These are often critical for PDF generation with varying characters
     fontconfig \
     libfontconfig1 \
-    ttf-dejavu \
-    # Optional but sometimes helpful for certain rendering
-    libevent-2.1-7 \
-    libharfbuzz0b \
     libjpeg62-turbo \
-    libwebp6 \
     libpng16-16 \
-    # Clean up apt cache to keep image size down
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
