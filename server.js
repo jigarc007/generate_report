@@ -13,6 +13,25 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+async function getBrowser() {
+  if (process.env.NODE_ENV === 'development') {
+    // Use full puppeteer in development
+    const puppeteerDev = require('puppeteer');
+    return puppeteerDev.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+  }
+  console.log('BROWSERLESS_API_KEY',process.env.BROWSERLESS_API_KEY)
+  // Use Browserless in production
+  if (!process.env.BROWSERLESS_API_KEY) {
+    throw new Error('Browserless API key not configured');
+  }
+
+  return puppeteer.connect({
+    browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_KEY}`
+  });
+}
 
 app.post('/generate-report', async (req, res) => {
   let browser;
@@ -64,7 +83,7 @@ app.post('/generate-report', async (req, res) => {
     }
 
     console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
-    browser = await puppeteer.launch(launchOptions);
+     browser = await getBrowser();
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
