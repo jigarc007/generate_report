@@ -60,29 +60,6 @@ app.post('/generate-report', async (req, res) => {
       progress: 10,
     });
     // Enhanced browser launch configuration for cloud environments
-    const launchOptions = {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-      ],
-    };
-
-    // Use the Chrome path set by startup script
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      console.log('Using Chrome path from environment:', process.env.PUPPETEER_EXECUTABLE_PATH);
-      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-
-    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
      browser = await getBrowser();
 
     const page = await browser.newPage();
