@@ -1,9 +1,9 @@
-const express=require('express')
-const bodyParser=require('body-parser')
-const puppeteer=require('puppeteer')
+const express = require('express');
+const bodyParser = require('body-parser');
+const puppeteer = require('puppeteer');
 require('dotenv').config();
-const {createClient}=require('@supabase/supabase-js')
-const {ReportStorage}=require('./reportStorage')
+const { createClient } = require('@supabase/supabase-js');
+const { ReportStorage } = require('./reportStorage');
 
 const app = express();
 app.use(bodyParser.json());
@@ -41,10 +41,60 @@ app.post('/generate-report', async (req, res) => {
       progress: 10,
     });
 
-    browser = await puppeteer.launch({
+    // Enhanced browser launch configuration for cloud environments
+    const launchOptions = {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+      ],
+    };
+
+    // Try different approaches based on environment
+    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+      // For Render and other cloud platforms
+      try {
+        // First try with executablePath if Chrome is installed
+        if (process.env.CHROME_EXECUTABLE_PATH) {
+          launchOptions.executablePath = process.env.CHROME_EXECUTABLE_PATH;
+        } else {
+          // Try common Chrome paths on Linux
+          const fs = require('fs');
+          const chromePaths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/opt/google/chrome/chrome',
+          ];
+          
+          for (const path of chromePaths) {
+            if (fs.existsSync(path)) {
+              launchOptions.executablePath = path;
+              break;
+            }
+          }
+        }
+        
+        browser = await puppeteer.launch(launchOptions);
+      } catch (error) {
+        console.log('Failed to launch with system Chrome, trying Puppeteer bundled Chrome...');
+        // Fallback: ensure Puppeteer downloads its own Chrome
+        delete launchOptions.executablePath;
+        browser = await puppeteer.launch(launchOptions);
+      }
+    } else {
+      // Local development
+      browser = await puppeteer.launch(launchOptions);
+    }
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
