@@ -124,15 +124,13 @@ app.post('/generate-report', async (req, res) => {
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
     console.log('Generating PDF...');
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
-
+    console.log({pdfBuffer})
     await browser.close();
     browser = null;
 
