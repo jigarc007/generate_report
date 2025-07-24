@@ -13,25 +13,7 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-async function getBrowser() {
-  if (process.env.NODE_ENV === 'development') {
-    // Use full puppeteer in development
-    const puppeteerDev = require('puppeteer');
-    return puppeteerDev.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-  }
-  console.log('BROWSERLESS_API_KEY',process.env.BROWSERLESS_API_KEY)
-  // Use Browserless in production
-  if (!process.env.BROWSERLESS_API_KEY) {
-    throw new Error('Browserless API key not configured');
-  }
 
-  return puppeteer.connect({
-    browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_KEY}`
-  });
-}
 
 app.post('/generate-report', async (req, res) => {
   let browser;
@@ -60,7 +42,24 @@ app.post('/generate-report', async (req, res) => {
       progress: 10,
     });
     // Enhanced browser launch configuration for cloud environments
-     browser = await getBrowser();
+    const launchOptions = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+      ],
+      executablePath: puppeteer.executablePath(),
+    };
+    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
