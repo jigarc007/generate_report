@@ -119,23 +119,23 @@ app.post('/generate-report', async (req, res) => {
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
   
     const chartSelectors = [
-      '#Age-Gender-Split-Bar-Chart',
-      '#Age-Gender-Split-Pie-Chart',
-      '#Best-Time-Chart',
-      '#Device-Split-Chart',
+      'Age & Gender Split Bar Chart',
+      'Age & Gender Split Pie Chart',
+      'Best Time Chart',
+      'Device Split Chart',
     ];
     let selectors = [];
     if (level === "Location Level") {
       locationIds?.forEach((location) => {
         chartSelectors?.forEach((select) => {
-          selectors?.push(`${select}-${location?.value}`)
+          selectors?.push(`[id="${select} ${location?.value}"]`)
         })
       })
 
     }else if (level === "Campaign Level") {
-      campaignIds?.forEach((Campaign) => {
+      campaignIds?.forEach((campaign) => {
         chartSelectors?.forEach((select) => {
-          selectors?.push(`${select}-${Campaign?.value}`)
+          selectors?.push(`[id="${select} ${campaign?.value}"]`)
         })
       })
     } else {
