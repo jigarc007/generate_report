@@ -14,101 +14,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Enhanced Chrome detection and configuration
-function getChromeExecutablePath() {
-  const possiblePaths = [
-    process.env.CHROME_EXECUTABLE_PATH,
-    process.env.CHROME_BIN,
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/chromium',
-    '/app/.apt/usr/bin/google-chrome', // Heroku buildpack path
-    '/opt/google/chrome/chrome', // Some Docker images
-  ];
-
-  for (const path of possiblePaths) {
-    if (path) return path;
-  }
-  
-  return null; // Let Puppeteer use bundled Chromium
-}
-
-// Create optimized launch options for cloud environments
-function createLaunchOptions() {
-  const executablePath = getChromeExecutablePath();
-  
-  const baseArgs = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--no-first-run',
-    '--no-zygote',
-    '--disable-gpu',
-    '--disable-web-security',
-    '--disable-features=VizDisplayCompositor',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--disable-field-trial-config',
-    '--disable-hang-monitor',
-    '--disable-ipc-flooding-protection',
-    '--disable-prompt-on-repost',
-    '--disable-sync',
-    '--force-color-profile=srgb',
-    '--metrics-recording-only',
-    '--no-crash-upload',
-    '--no-default-browser-check',
-    '--no-pings',
-    '--password-store=basic',
-    '--use-mock-keychain',
-    '--disable-extensions',
-    '--disable-default-apps',
-    '--disable-translate',
-    '--disable-device-discovery-notifications',
-    '--disable-software-rasterizer',
-    '--disable-background-downloads',
-    '--disable-add-to-shelf',
-    '--disable-client-side-phishing-detection',
-    '--disable-datasaver-prompt',
-    '--disable-default-apps',
-    '--disable-domain-reliability',
-    '--safebrowsing-disable-auto-update',
-    '--ignore-gpu-blacklist',
-    '--ignore-certificate-errors',
-    '--ignore-ssl-errors',
-    '--ignore-certificate-errors-spki-list'
-  ];
-
-  // Add memory optimization for constrained environments
-  if (process.env.NODE_ENV === 'production') {
-    baseArgs.push(
-      '--single-process', // Use only in production, can be unstable
-      '--memory-pressure-off',
-      '--max_old_space_size=512'
-    );
-  }
-
-  const options = {
-    headless: true,
-    args: baseArgs,
-    timeout: 60000, // Increase timeout to 60 seconds
-    handleSIGINT: false,
-    handleSIGTERM: false,
-    handleSIGHUP: false
-  };
-
-  if (executablePath) {
-    options.executablePath = executablePath;
-    console.log(`Using Chrome at: ${executablePath}`);
-  } else {
-    console.log('Using bundled Chromium');
-  }
-
-  return options;
-}
-
 app.post('/generate-report', async (req, res) => {
   let browser;
   let jobId;
@@ -128,8 +33,7 @@ app.post('/generate-report', async (req, res) => {
       baseURL,
       level
     } = req.body;
-    
-    console.log('Payload body:', {
+    console.log('payload body:>',{
       requestJobId,
       brandId,
       campaignIds,
@@ -141,9 +45,7 @@ app.post('/generate-report', async (req, res) => {
       currency,
       timeZone,
       level,
-      baseURL
-    });
-    
+      baseURL});
     jobId = requestJobId;
     console.log("Processing job:", jobId);
 
@@ -152,48 +54,35 @@ app.post('/generate-report', async (req, res) => {
       progress: 10,
     });
 
-    console.log('Launching browser...');
-    const launchOptions = createLaunchOptions();
-    
-    // Add retry logic for browser launch
-    let launchAttempts = 0;
-    const maxLaunchAttempts = 3;
-    
-    while (launchAttempts < maxLaunchAttempts) {
-      try {
-        browser = await puppeteer.launch(launchOptions);
-        console.log('Browser launched successfully');
-        break;
-      } catch (launchError) {
-        launchAttempts++;
-        console.error(`Browser launch attempt ${launchAttempts} failed:`, launchError.message);
-        
-        if (launchAttempts >= maxLaunchAttempts) {
-          throw new Error(`Failed to launch browser after ${maxLaunchAttempts} attempts: ${launchError.message}`);
-        }
-        
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Try with different options on retry
-        if (launchAttempts === 2) {
-          launchOptions.args.push('--disable-extensions');
-          delete launchOptions.executablePath; // Try bundled Chromium
-        }
-      }
-    }
+    // Determine the executable path based on the environment
+    // For Render with Docker, Chrome is installed at /usr/bin/google-chrome
+    const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+
+    // Enhanced browser launch configuration for cloud environments
+    const launchOptions = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-gpu'
+      ],
+      executablePath: executablePath, // Use the dynamically determined path
+    };
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
-    
-    // Set page configuration
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
     );
-
-    // Set page timeouts
-    page.setDefaultTimeout(180000);
-    page.setDefaultNavigationTimeout(180000);
 
     const queryParams = new URLSearchParams({
       brandId: brandId?.toString(),
@@ -218,42 +107,16 @@ app.post('/generate-report', async (req, res) => {
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
 
-    console.log('Navigating to page...');
-    
-    // Enhanced navigation with retry logic
-    let navigationAttempts = 0;
-    const maxNavigationAttempts = 2;
-    
-    while (navigationAttempts < maxNavigationAttempts) {
-      try {
-        await page.goto(reportUrl, {
-          waitUntil: 'networkidle2',
-          timeout: 180000,
-        });
-        console.log('Navigation successful');
-        break;
-      } catch (navError) {
-        navigationAttempts++;
-        console.error(`Navigation attempt ${navigationAttempts} failed:`, navError.message);
-        
-        if (navigationAttempts >= maxNavigationAttempts) {
-          throw navError;
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-    }
+    console.log('Navigating...');
+    await page.goto(reportUrl, {
+      waitUntil: 'networkidle2',
+      timeout: 180000,
+    });
 
-    // Wait for page to stabilize
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('Waiting for main container...');
-    await page.waitForSelector('#report-home-page', { 
-      visible: true, 
-      timeout: 180000 
-    });
-
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 40 });
+    await page.waitForSelector('#report-home-page', { visible: true, timeout: 210000 });
 
     const chartSelectors = [
       '[id="Age & Gender Split Chart 01"]',
@@ -262,20 +125,17 @@ app.post('/generate-report', async (req, res) => {
       '[id="Device Split Chart"]',
     ];
 
-    console.log('Waiting for charts to load...');
+    console.log('Waiting for charts...');
     for (const selector of chartSelectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 120000 });
-        console.log(`Chart loaded: ${selector}`);
-      } catch (error) {
-        console.warn(`Chart failed to load: ${selector}`, error.message);
+        await page.waitForSelector(selector, { timeout: 160000 });
+        console.log(`Loaded: ${selector}`);
+      } catch {
+        console.warn(`Failed to load: ${selector}`);
       }
     }
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
-
-    // Additional wait to ensure all content is rendered
-    await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log('Generating PDF...');
     const pdfBuffer = await page.pdf({
@@ -283,20 +143,13 @@ app.post('/generate-report', async (req, res) => {
       printBackground: true,
       timeout: 120000,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      preferCSSPageSize: false,
     });
-
-    // Close browser immediately after PDF generation
     await browser.close();
     browser = null;
-    console.log('Browser closed successfully');
-
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 85 });
 
     const filename = `report-${jobId}.pdf`;
     const path = `${brandId}/${filename}`;
 
-    console.log('Uploading PDF to Supabase...');
     const { error: uploadError } = await supabase
       .storage
       .from('Creatives/brand-uploaded')
@@ -305,11 +158,10 @@ app.post('/generate-report', async (req, res) => {
         upsert: true,
       });
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
+    if (uploadError){
+    console.log({uploadError})
       throw uploadError;
     }
-
     const { data: publicUrl } = supabase
       .storage
       .from('Creatives/brand-uploaded')
@@ -321,22 +173,11 @@ app.post('/generate-report', async (req, res) => {
       downloadUrl: publicUrl.publicUrl,
     });
 
-    console.log('Report generation completed successfully');
     res.json({ success: true, url: publicUrl.publicUrl });
 
   } catch (error) {
-    console.error('Report generation failed:', error);
-    
-    // Ensure browser is closed in case of error
-    if (browser) {
-      try {
-        await browser.close();
-        console.log('Browser closed after error');
-      } catch (closeError) {
-        console.error('Failed to close browser:', closeError);
-      }
-    }
-    
+    console.error('Failed:', error);
+    if (browser) await browser.close();
     if (jobId) {
       await ReportStorage.updateJob(jobId, {
         status: 'Failed',
@@ -344,25 +185,8 @@ app.post('/generate-report', async (req, res) => {
         error: error.message,
       });
     }
-    
     res.status(500).json({ error: error.message });
   }
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  process.exit(0);
 });
 
 const PORT = process.env.PORT || 3001;
