@@ -30,7 +30,8 @@ app.post('/generate-report', async (req, res) => {
       logo,
       currency,
       timeZone,
-      baseURL
+      baseURL,
+      level
     } = req.body;
     console.log('payload body:>',{
       requestJobId,
@@ -43,6 +44,7 @@ app.post('/generate-report', async (req, res) => {
       logo,
       currency,
       timeZone,
+      level,
       baseURL});
     jobId = requestJobId;
     console.log("Processing job:", jobId);
@@ -74,7 +76,6 @@ app.post('/generate-report', async (req, res) => {
       ],
       executablePath: executablePath, // Use the dynamically determined path
     };
-    console.log('Launch options:', JSON.stringify(launchOptions, null, 2));
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
@@ -93,6 +94,7 @@ app.post('/generate-report', async (req, res) => {
       homePageDetails,
       logo: JSON.stringify(logo),
       timeZone,
+      level,
       isReport: 'true',
     });
 
