@@ -145,7 +145,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Waiting for charts...');
     for (const selector of selectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 160000 });
+        await page.waitForSelector(selector, { timeout: 120000 });
         console.log(`Loaded: ${selector}`);
       } catch {
         console.warn(`Failed to load: ${selector}`);
