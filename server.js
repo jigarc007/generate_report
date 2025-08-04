@@ -110,13 +110,13 @@ app.post('/generate-report', async (req, res) => {
     console.log('Navigating...');
     await page.goto(reportUrl, {
       waitUntil: 'networkidle2',
-      timeout: 180000,
+      timeout: 160000,
     });
 
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('Waiting for main container...');
-    await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
+    await page.waitForSelector('#report-home-page', { visible: true, timeout: 160000 });
   
     const chartSelectors = [
       'Age & Gender Split Bar Chart',
@@ -145,7 +145,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Waiting for charts...');
     for (const selector of selectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 120000 });
+        await page.waitForSelector(selector, { timeout: 60000 });
         console.log(`Loaded: ${selector}`);
       } catch {
         console.warn(`Failed to load: ${selector}`);
