@@ -117,16 +117,34 @@ app.post('/generate-report', async (req, res) => {
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 210000 });
-
+  
     const chartSelectors = [
-      '[id="Age & Gender Split Chart 01"]',
-      '[id="Age & Gender Split Chart 02"]',
-      '[id="Best Time Chart"]',
-      '[id="Device Split Chart"]',
+      '#Age-Gender-Split-Bar-Chart',
+      '#Age-Gender-Split-Pie-Chart',
+      '#"Best-Time-Chart',
+      '#"Device-Split-Chart',
     ];
+    let selectors = [];
+    if (level === "Location Level") {
+      locationIds?.forEach((location) => {
+        chartSelectors?.forEach((select) => {
+          selectors?.push(`${select}-${location?.name}`)
+        })
+      })
 
+    }
+    if (level === "Campaign Level") {
+      campaignIds?.forEach((Campaign) => {
+        chartSelectors?.forEach((select) => {
+          selectors?.push(`${select}-${Campaign?.name}`)
+        })
+      })
+    } else {
+      selectors = chartSelectors
+    }
+    console.log({selectors})
     console.log('Waiting for charts...');
-    for (const selector of chartSelectors) {
+    for (const selector of selectors) {
       try {
         await page.waitForSelector(selector, { timeout: 160000 });
         console.log(`Loaded: ${selector}`);
