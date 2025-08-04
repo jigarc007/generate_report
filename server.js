@@ -113,44 +113,44 @@ app.post('/generate-report', async (req, res) => {
       timeout: 160000,
     });
 
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
   
-    // const chartSelectors = [
-    //   'Age & Gender Split Bar Chart',
-    //   'Age & Gender Split Pie Chart',
-    //   'Best Time Chart',
-    //   'Device Split Chart',
-    // ];
-    // let selectors = [];
-    // if (level === "Location Level") {
-    //   locationIds?.forEach((location) => {
-    //     chartSelectors?.forEach((select) => {
-    //       selectors?.push(`[id="${select} ${location?.value}"]`)
-    //     })
-    //   })
+    const chartSelectors = [
+      'Age & Gender Split Bar Chart',
+      'Age & Gender Split Pie Chart',
+      'Best Time Chart',
+      'Device Split Chart',
+    ];
+    let selectors = [];
+    if (level === "Location Level") {
+      locationIds?.forEach((location) => {
+        chartSelectors?.forEach((select) => {
+          selectors?.push(`[id="${select} ${location?.value}"]`)
+        })
+      })
 
-    // }else if (level === "Campaign Level") {
-    //   campaignIds?.forEach((campaign) => {
-    //     chartSelectors?.forEach((select) => {
-    //       selectors?.push(`[id="${select} ${campaign?.value}"]`)
-    //     })
-    //   })
-    // } else {
-    //   selectors = chartSelectors
-    // }
-    // console.log({selectors})
-    // console.log('Waiting for charts...');
-    // for (const selector of selectors) {
-    //   try {
-    //     await page.waitForSelector(selector, { timeout: 60000 });
-    //     console.log(`Loaded: ${selector}`);
-    //   } catch {
-    //     console.warn(`Failed to load: ${selector}`);
-    //   }
-    // }
+    }else if (level === "Campaign Level") {
+      campaignIds?.forEach((campaign) => {
+        chartSelectors?.forEach((select) => {
+          selectors?.push(`[id="${select} ${campaign?.value}"]`)
+        })
+      })
+    } else {
+      selectors = chartSelectors
+    }
+    console.log({selectors})
+    console.log('Waiting for charts...');
+    for (const selector of selectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 60000 });
+        console.log(`Loaded: ${selector}`);
+      } catch {
+        console.warn(`Failed to load: ${selector}`);
+      }
+    }
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
 
