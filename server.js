@@ -116,41 +116,41 @@ app.post('/generate-report', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('Waiting for main container...');
-    await page.waitForSelector('#report-home-page', { visible: true, timeout: 160000 });
+    await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
   
-    const chartSelectors = [
-      'Age & Gender Split Bar Chart',
-      'Age & Gender Split Pie Chart',
-      'Best Time Chart',
-      'Device Split Chart',
-    ];
-    let selectors = [];
-    if (level === "Location Level") {
-      locationIds?.forEach((location) => {
-        chartSelectors?.forEach((select) => {
-          selectors?.push(`[id="${select} ${location?.value}"]`)
-        })
-      })
+    // const chartSelectors = [
+    //   'Age & Gender Split Bar Chart',
+    //   'Age & Gender Split Pie Chart',
+    //   'Best Time Chart',
+    //   'Device Split Chart',
+    // ];
+    // let selectors = [];
+    // if (level === "Location Level") {
+    //   locationIds?.forEach((location) => {
+    //     chartSelectors?.forEach((select) => {
+    //       selectors?.push(`[id="${select} ${location?.value}"]`)
+    //     })
+    //   })
 
-    }else if (level === "Campaign Level") {
-      campaignIds?.forEach((campaign) => {
-        chartSelectors?.forEach((select) => {
-          selectors?.push(`[id="${select} ${campaign?.value}"]`)
-        })
-      })
-    } else {
-      selectors = chartSelectors
-    }
-    console.log({selectors})
-    console.log('Waiting for charts...');
-    for (const selector of selectors) {
-      try {
-        await page.waitForSelector(selector, { timeout: 60000 });
-        console.log(`Loaded: ${selector}`);
-      } catch {
-        console.warn(`Failed to load: ${selector}`);
-      }
-    }
+    // }else if (level === "Campaign Level") {
+    //   campaignIds?.forEach((campaign) => {
+    //     chartSelectors?.forEach((select) => {
+    //       selectors?.push(`[id="${select} ${campaign?.value}"]`)
+    //     })
+    //   })
+    // } else {
+    //   selectors = chartSelectors
+    // }
+    // console.log({selectors})
+    // console.log('Waiting for charts...');
+    // for (const selector of selectors) {
+    //   try {
+    //     await page.waitForSelector(selector, { timeout: 60000 });
+    //     console.log(`Loaded: ${selector}`);
+    //   } catch {
+    //     console.warn(`Failed to load: ${selector}`);
+    //   }
+    // }
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
 
@@ -158,7 +158,7 @@ app.post('/generate-report', async (req, res) => {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      timeout: 120000,
+      timeout: 160000,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
     await browser.close();
