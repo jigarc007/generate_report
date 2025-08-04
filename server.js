@@ -132,8 +132,7 @@ app.post('/generate-report', async (req, res) => {
         })
       })
 
-    }
-    if (level === "Campaign Level") {
+    }else if (level === "Campaign Level") {
       campaignIds?.forEach((Campaign) => {
         chartSelectors?.forEach((select) => {
           selectors?.push(`${select}-${Campaign?.value}`)
