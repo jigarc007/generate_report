@@ -121,8 +121,8 @@ app.post('/generate-report', async (req, res) => {
     const chartSelectors = [
       '#Age-Gender-Split-Bar-Chart',
       '#Age-Gender-Split-Pie-Chart',
-      '#"Best-Time-Chart',
-      '#"Device-Split-Chart',
+      '#Best-Time-Chart',
+      '#Device-Split-Chart',
     ];
     let selectors = [];
     if (level === "Location Level") {
