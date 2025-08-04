@@ -116,7 +116,7 @@ app.post('/generate-report', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('Waiting for main container...');
-    await page.waitForSelector('#report-home-page', { visible: true, timeout: 210000 });
+    await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
   
     const chartSelectors = [
       '#Age-Gender-Split-Bar-Chart',
@@ -128,7 +128,7 @@ app.post('/generate-report', async (req, res) => {
     if (level === "Location Level") {
       locationIds?.forEach((location) => {
         chartSelectors?.forEach((select) => {
-          selectors?.push(`${select}-${location?.name}`)
+          selectors?.push(`${select}-${location?.value}`)
         })
       })
 
@@ -136,7 +136,7 @@ app.post('/generate-report', async (req, res) => {
     if (level === "Campaign Level") {
       campaignIds?.forEach((Campaign) => {
         chartSelectors?.forEach((select) => {
-          selectors?.push(`${select}-${Campaign?.name}`)
+          selectors?.push(`${select}-${Campaign?.value}`)
         })
       })
     } else {
