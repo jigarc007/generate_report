@@ -74,21 +74,11 @@ class ReportStorage {
     const dbUpdates = {};
     console.log('Updating job: ', jobId, updates);
 
-    if (updates.brandId !== undefined) dbUpdates.brand_id = updates.brandId;
-    if (updates.campaignIds !== undefined) dbUpdates.campaign_ids = updates.campaignIds;
-    if (updates.fromDate !== undefined) dbUpdates.from_date = updates.fromDate;
-    if (updates.toDate !== undefined) dbUpdates.to_date = updates.toDate;
-    if (updates.locationIds !== undefined) dbUpdates.location_ids = updates.locationIds;
-    if (updates.homePageDetails !== undefined) dbUpdates.home_page_details = updates.homePageDetails;
-    if (updates.logo !== undefined) dbUpdates.logo = updates.logo;
-    if (updates.currency !== undefined) dbUpdates.currency = updates.currency;
-    if (updates.timeZone !== undefined) dbUpdates.time_zone = updates.timeZone;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.progress !== undefined) dbUpdates.progress = updates.progress;
     if (updates.downloadUrl !== undefined) dbUpdates.download_url = updates.downloadUrl;
     if (updates.error !== undefined) dbUpdates.error = updates.error;
-    if (updates.level !== undefined) dbUpdates.level = updates.level;
-
+    console.log({updates})
     const { error } = await supabase
       .from('report_jobs')
       .update(dbUpdates)
