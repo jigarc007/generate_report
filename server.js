@@ -22,10 +22,12 @@ app.post('/generate-report', async (req, res) => {
     const {
       jobId,
       baseURL,
-      level
+      level,
+      brandId
     } = req.body;
     console.log('payload body:>',{
       jobId,
+      brandId,
       level,
       baseURL});
     console.log("Processing job:", jobId);
