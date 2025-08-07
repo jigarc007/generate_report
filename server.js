@@ -28,7 +28,6 @@ app.post('/generate-report', async (req, res) => {
       jobId,
       level,
       baseURL});
-    jobId = requestJobId;
     console.log("Processing job:", jobId);
 
     await ReportStorage.updateJob(jobId, {
