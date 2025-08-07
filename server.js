@@ -10,15 +10,15 @@ app.use(bodyParser.json());
 
 // Configuration constants
 const CONFIG = {
-  MAX_RETRIES: 3,
-  RETRY_DELAY: 5000,
+  MAX_RETRIES: 2, // Reduced retries since the issue seems consistent
+  RETRY_DELAY: 10000,
   TIMEOUTS: {
-    NAVIGATION: 300000,    // 5 minutes
-    SELECTOR_WAIT: 240000, // 4 minutes
-    CHART_WAIT: 90000,     // 1.5 minutes per chart
-    PDF_GENERATION: 300000 // 5 minutes
+    NAVIGATION: 120000,    // 2 minutes - more realistic
+    SELECTOR_WAIT: 120000, // 2 minutes
+    CHART_WAIT: 60000,     // 1 minute per chart
+    PDF_GENERATION: 180000 // 3 minutes
   },
-  CHUNK_SIZE: 3 // Process locations in chunks
+  CHUNK_SIZE: 3
 };
 
 // Setup Supabase
@@ -36,28 +36,84 @@ const chunkArray = (array, size) => {
   return chunks;
 };
 
+// URL validation and network diagnostics
+async function validateURL(url, page) {
+  console.log('Validating URL accessibility...');
+  
+  try {
+    // Try a simple HEAD request first using page.evaluate
+    const response = await page.evaluate(async (testUrl) => {
+      try {
+        const response = await fetch(testUrl, { method: 'HEAD' });
+        return {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error.message
+        };
+      }
+    }, url);
+    
+    if (!response.ok) {
+      console.warn(`URL validation failed: ${response.status} - ${response.statusText || response.error}`);
+      return false;
+    }
+    
+    console.log('URL is accessible');
+    return true;
+  } catch (error) {
+    console.warn('URL validation error:', error.message);
+    return false;
+  }
+}
+
 // Enhanced wait function with multiple fallback selectors
-async function waitForPageLoad(page, timeout = CONFIG.TIMEOUTS.SELECTOR_WAIT) {
+async function waitForPageLoad(page, timeout = 60000) {
   const selectors = [
     '#report-home-page',
     '.report-container',
     '[data-testid="report"]',
-    '.main-content'
+    '.main-content',
+    'body' // Ultimate fallback
   ];
   
-  console.log('Waiting for page to load with multiple selectors...');
+  console.log('Waiting for page to load...');
+  
+  // First, just wait a bit for initial rendering
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
   for (const selector of selectors) {
     try {
-      await page.waitForSelector(selector, { visible: true, timeout: timeout / selectors.length });
+      await page.waitForSelector(selector, { timeout: timeout / selectors.length });
       console.log(`Found page element: ${selector}`);
+      
+      // Additional wait to ensure content is actually rendered
+      await new Promise(resolve => setTimeout(resolve, 1000));
       return true;
     } catch (error) {
       console.warn(`Selector ${selector} not found, trying next...`);
     }
   }
   
-  throw new Error('Page failed to load - no valid selectors found');
+  // If no selectors found, check if page has basic HTML content
+  try {
+    const hasContent = await page.evaluate(() => {
+      return document.body && document.body.innerHTML.trim().length > 0;
+    });
+    
+    if (hasContent) {
+      console.log('Page has content, proceeding...');
+      return true;
+    }
+  } catch (evalError) {
+    console.warn('Could not evaluate page content');
+  }
+  
+  throw new Error('Page failed to load - no valid content found');
 }
 
 // Enhanced chart waiting with better error handling
@@ -131,15 +187,6 @@ async function generatePDF(page, timeout = CONFIG.TIMEOUTS.PDF_GENERATION) {
 async function generateReportWithRetry(jobData, attempt = 1) {
   const {
     jobId,
-    brandId,
-    campaignIds,
-    fromDate,
-    toDate,
-    locationIds,
-    homePageDetails,
-    logo,
-    currency,
-    timeZone,
     baseURL,
     level
   } = jobData;
@@ -149,28 +196,35 @@ async function generateReportWithRetry(jobData, attempt = 1) {
   try {
     console.log(`Report generation attempt ${attempt} for job: ${jobId}`);
     
-    // Enhanced browser launch configuration
+    // Enhanced browser launch configuration for better compatibility
     const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
+        '--no-first-run',
+        '--disable-extensions',
+        '--disable-default-apps',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
-        '--max_old_space_size=4096',
-        '--memory-pressure-off'
+        '--disable-field-trial-config',
+        '--disable-back-forward-cache',
+        '--disable-ipc-flooding-protection',
+        '--enable-features=NetworkService,NetworkServiceLogging',
+        '--force-color-profile=srgb',
+        '--metrics-recording-only',
+        '--no-default-browser-check',
+        '--no-crash-upload',
+        '--disable-breakpad'
       ],
       executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome',
-      timeout: CONFIG.TIMEOUTS.NAVIGATION
+      timeout: 30000, // Quick browser launch
+      ignoreDefaultArgs: ['--disable-extensions'] // Allow some default behavior
     };
     
     browser = await puppeteer.launch(launchOptions);
@@ -182,38 +236,81 @@ async function generateReportWithRetry(jobData, attempt = 1) {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
     );
     
-    // Set extra headers
+    // Don't set overly restrictive timeouts initially
+    page.setDefaultTimeout(60000); // 1 minute for selectors
+    page.setDefaultNavigationTimeout(120000); // 2 minutes for navigation
+    
+    // Simpler headers that won't interfere
     await page.setExtraHTTPHeaders({
-      'ngrok-skip-browser-warning': 'true',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    });
+    
+    // Enable request/response logging for debugging
+    page.on('response', response => {
+      if (response.url().includes('render-chart')) {
+        console.log(`Response: ${response.status()} ${response.url()}`);
+      }
+    });
+    
+    page.on('requestfailed', request => {
+      console.log(`Request failed: ${request.url()} - ${request.failure().errorText}`);
     });
     
     // Build URL
     const queryParams = new URLSearchParams({
-      brandId: brandId?.toString(),
-      campaignIds: JSON.stringify(campaignIds || []),
-      fromDate,
-      toDate,
-      currency,
-      locationIds: JSON.stringify(locationIds),
-      homePageDetails,
-      logo: JSON.stringify(logo),
-      timeZone,
-      level,
+      jobId,
       isReport: 'true',
     });
     
     const reportUrl = `${baseURL}/render-chart?${queryParams}`;
     console.log("Opening URL:", reportUrl);
+    console.log("URL length:", reportUrl.length);
     
     // Update progress
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
     
-    // Navigate with enhanced waiting
+    // Navigate with simpler, more reliable approach
     console.log('Navigating...');
-    await page.goto(reportUrl, {
-      waitUntil: ['networkidle0', 'domcontentloaded'],
-      timeout: CONFIG.TIMEOUTS.NAVIGATION,
-    });
+    
+    try {
+      // Start with the most permissive navigation strategy
+      console.log('Attempting navigation with domcontentloaded...');
+      const response = await page.goto(reportUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 120000 // 2 minutes should be plenty
+      });
+      
+      console.log(`Navigation response status: ${response.status()}`);
+      
+      if (!response.ok()) {
+        throw new Error(`HTTP ${response.status()}: ${response.statusText()}`);
+      }
+      
+      console.log('Navigation successful, waiting for page to settle...');
+      
+      // Give the page a moment to start rendering
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+    } catch (navError) {
+      console.error('Primary navigation failed:', navError.message);
+      
+      // Fallback: try with no wait conditions
+      console.log('Attempting fallback navigation...');
+      try {
+        await page.goto(reportUrl, {
+          waitUntil: 'commit',
+          timeout: 60000
+        });
+        console.log('Fallback navigation succeeded');
+        
+        // Wait longer for content to load
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+      } catch (fallbackError) {
+        console.error('Fallback navigation also failed:', fallbackError.message);
+        throw new Error(`Navigation failed: ${navError.message}. Fallback also failed: ${fallbackError.message}`);
+      }
+    }
     
     // Wait for main container
     await waitForPageLoad(page);
@@ -306,7 +403,20 @@ async function generateReportWithRetry(jobData, attempt = 1) {
       }
     }
     
-    // Retry logic
+    // Check if it's a navigation timeout - might need different approach
+    if (error.message.includes('Navigation timeout') || error.message.includes('Timed out')) {
+      console.error('Navigation timeout detected - this might indicate server issues');
+      
+      // For navigation timeouts, wait longer before retry
+      if (attempt < CONFIG.MAX_RETRIES) {
+        const extendedDelay = CONFIG.RETRY_DELAY * (attempt + 1); // Progressive delay
+        console.log(`Navigation timeout - waiting ${extendedDelay}ms before retry... (attempt ${attempt + 1}/${CONFIG.MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, extendedDelay));
+        return generateReportWithRetry(jobData, attempt + 1);
+      }
+    }
+    
+    // Retry logic for other errors
     if (attempt < CONFIG.MAX_RETRIES) {
       console.log(`Retrying in ${CONFIG.RETRY_DELAY}ms... (attempt ${attempt + 1}/${CONFIG.MAX_RETRIES})`);
       await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
@@ -399,6 +509,68 @@ app.get('/health', (req, res) => {
       timeouts: CONFIG.TIMEOUTS
     }
   });
+});
+
+// URL diagnostic endpoint
+app.post('/diagnose-url', async (req, res) => {
+  let browser;
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+    
+    console.log('Diagnosing URL:', url);
+    
+    // Launch minimal browser for diagnosis
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome',
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    const startTime = Date.now();
+    
+    try {
+      // Try simple navigation
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const loadTime = Date.now() - startTime;
+      
+      // Get page title and basic info
+      const title = await page.title();
+      const pageUrl = page.url();
+      
+      await browser.close();
+      
+      res.json({
+        success: true,
+        loadTime,
+        title,
+        finalUrl: pageUrl,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (navError) {
+      await browser.close();
+      res.json({
+        success: false,
+        error: navError.message,
+        loadTime: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+  } catch (error) {
+    if (browser) await browser.close();
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3001;
