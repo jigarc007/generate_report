@@ -16,8 +16,6 @@ const supabase = createClient(
 
 app.post('/generate-report', async (req, res) => {
   let browser;
-  let jobId;
-
   try {
     const {
       jobId,
@@ -53,12 +51,11 @@ app.post('/generate-report', async (req, res) => {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
+        '--disable-webgl',
+        '--disable-extensions',
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
         '--disable-gpu'
       ],
       executablePath: executablePath, // Use the dynamically determined path
@@ -86,10 +83,8 @@ app.post('/generate-report', async (req, res) => {
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
 
     console.log('Navigating...');
-    await page.goto(reportUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 160000,
-    });
+    await page.goto(reportUrl, { waitUntil: 'load', timeout: 160000 });
+
 
     // await new Promise(resolve => setTimeout(resolve, 5000));
 
@@ -127,13 +122,22 @@ app.post('/generate-report', async (req, res) => {
     }
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
+    await page.evaluate(() => {
+    document.querySelectorAll('*').forEach(el => {
+        el.style.animation = 'none';
+        el.style.transition = 'none';
+      });
+    });
+
+    await page.waitForTimeout(2000); // give charts time to fully render
 
     console.log('Generating PDF...');
     const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      timeout: 120000,
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    format: 'A4',
+    printBackground: true,
+    margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    preferCSSPageSize: true, // avoids layout recalculation
+    timeout: 0 // disable timeout at this step
     });
     await browser.close();
     browser = null;
