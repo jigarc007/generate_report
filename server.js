@@ -15,7 +15,7 @@ const supabase = createClient(
 );
 
 app.post('/generate-report', async (req, res) => {
-  let browser,reportJobId;
+  let browser, reportJobId;
   try {
     const {
       jobId,
@@ -25,25 +25,28 @@ app.post('/generate-report', async (req, res) => {
       locationIds,
       campaignIds
     } = req.body;
-    console.log('payload body:>',{
+    
+    console.log('payload body:>', {
       jobId,
       brandId,
       level,
       locationIds,
       campaignIds,
-      baseURL});
+      baseURL
+    });
+    
     console.log("Processing job:", jobId);
-    reportJobId=jobId;
+    reportJobId = jobId;
+    
     await ReportStorage.updateJob(jobId, {
       status: 'Processing',
       progress: 10,
     });
 
     // Determine the executable path based on the environment
-    // For Render with Docker, Chrome is installed at /usr/bin/google-chrome
     const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
 
-    // Enhanced browser launch configuration for cloud environments
+    // Enhanced browser launch configuration with increased timeouts
     const launchOptions = {
       headless: true,
       args: [
@@ -56,21 +59,30 @@ app.post('/generate-report', async (req, res) => {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ],
-      executablePath: executablePath, // Use the dynamically determined path
-      protocolTimeout: 160000 
+      executablePath: executablePath,
+      protocolTimeout: 300000, // Increased to 5 minutes
+      timeout: 300000 // Browser launch timeout
     };
+    
     browser = await puppeteer.launch(launchOptions);
-
     const page = await browser.newPage();
+    
+    // Set longer timeouts for the page
+    page.setDefaultNavigationTimeout(180000); // 3 minutes
+    page.setDefaultTimeout(180000); // 3 minutes
+    
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
     );
 
     const queryParams = new URLSearchParams({
-       jobId,
+      jobId,
       isReport: 'true',
     });
 
@@ -84,35 +96,34 @@ app.post('/generate-report', async (req, res) => {
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
 
     console.log('Navigating...');
-    await page.goto(reportUrl, { waitUntil: 'load', timeout: 160000 });
-
-
-    // await new Promise(resolve => setTimeout(resolve, 5000));
+    await page.goto(reportUrl, { waitUntil: 'networkidle0', timeout: 180000 });
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
-  
+
     const chartSelectors = [
       'Age & Gender Split Bar Chart',
       'Age & Gender Split Pie Chart',
       'Best Time Chart',
       'Device Split Chart',
     ];
+    
     let selectors = [];
     if (level === "Location Level") {
       locationIds?.forEach((location) => {
-          selectors?.push(`[id="${location?.value}"]`)
+        selectors?.push(`[id="${location?.value}"]`)
       })
-
-    }else if (level === "Campaign Level") {
+    } else if (level === "Campaign Level") {
       campaignIds?.forEach((campaign) => {
-          selectors?.push(`[id="${campaign?.value}"]`)
+        selectors?.push(`[id="${campaign?.value}"]`)
       })
     } else {
       selectors = chartSelectors
     }
-    console.log({selectors})
+    
+    console.log({ selectors });
     console.log('Waiting for charts...');
+    
     for (const selector of selectors) {
       try {
         await page.waitForSelector(selector, { timeout: 30000 });
@@ -123,21 +134,71 @@ app.post('/generate-report', async (req, res) => {
     }
 
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 70 });
+
+    // Disable animations and transitions
     await page.evaluate(() => {
-    document.querySelectorAll('*').forEach(el => {
+      document.querySelectorAll('*').forEach(el => {
         el.style.animation = 'none';
         el.style.transition = 'none';
       });
     });
-    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Wait for any remaining rendering
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     console.log('Generating PDF...');
-    const pdfBuffer = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-    margin: { top: '0', bottom: '0', left: '0', right: '0' },
-    preferCSSPageSize: true, // avoids layout recalculation
-    timeout: 0 // disable timeout at this step
-    });
+    
+    // Multiple attempts for PDF generation with different strategies
+    let pdfBuffer;
+    let pdfAttempts = 0;
+    const maxPdfAttempts = 3;
+    
+    while (pdfAttempts < maxPdfAttempts) {
+      try {
+        pdfAttempts++;
+        console.log(`PDF generation attempt ${pdfAttempts}/${maxPdfAttempts}`);
+        
+        // Strategy 1: Basic PDF with extended timeout
+        if (pdfAttempts === 1) {
+          pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '0', bottom: '0', left: '0', right: '0' },
+            preferCSSPageSize: true,
+            timeout: 240000 // 4 minutes timeout for PDF generation
+          });
+        }
+        // Strategy 2: Simplified PDF options
+        else if (pdfAttempts === 2) {
+          pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            timeout: 180000 // 3 minutes timeout
+          });
+        }
+        // Strategy 3: Most basic PDF options
+        else {
+          pdfBuffer = await page.pdf({
+            format: 'A4',
+            timeout: 120000 // 2 minutes timeout
+          });
+        }
+        
+        console.log(`PDF generated successfully on attempt ${pdfAttempts}`);
+        break;
+        
+      } catch (pdfError) {
+        console.log(`PDF attempt ${pdfAttempts} failed:`, pdfError.message);
+        
+        if (pdfAttempts === maxPdfAttempts) {
+          throw new Error(`PDF generation failed after ${maxPdfAttempts} attempts. Last error: ${pdfError.message}`);
+        }
+        
+        // Wait before next attempt
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
     await browser.close();
     browser = null;
 
@@ -152,10 +213,11 @@ app.post('/generate-report', async (req, res) => {
         upsert: true,
       });
 
-    if (uploadError){
-    console.log({uploadError})
+    if (uploadError) {
+      console.log({ uploadError });
       throw uploadError;
     }
+
     const { data: publicUrl } = supabase
       .storage
       .from('Creatives/brand-uploaded')
@@ -171,8 +233,16 @@ app.post('/generate-report', async (req, res) => {
 
   } catch (error) {
     console.error('Failed:', error);
-    console.log('error reportjobid:>',reportJobId)
-    if (browser) await browser.close();
+    console.log('error reportjobid:>', reportJobId);
+    
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+    
     if (reportJobId) {
       await ReportStorage.updateJob(reportJobId, {
         status: 'Failed',
@@ -180,6 +250,7 @@ app.post('/generate-report', async (req, res) => {
         error: error.message,
       });
     }
+    
     res.status(500).json({ error: error.message });
   }
 });
