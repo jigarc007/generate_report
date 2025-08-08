@@ -59,6 +59,7 @@ app.post('/generate-report', async (req, res) => {
         '--disable-gpu'
       ],
       executablePath: executablePath, // Use the dynamically determined path
+      protocolTimeout: 160000 
     };
     browser = await puppeteer.launch(launchOptions);
 
