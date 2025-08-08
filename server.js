@@ -65,16 +65,11 @@ app.post('/generate-report', async (req, res) => {
         '--disable-renderer-backgrounding'
       ],
       executablePath: executablePath,
-      protocolTimeout: 300000, // Increased to 5 minutes
-      timeout: 300000 // Browser launch timeout
     };
     
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
     
-    // Set longer timeouts for the page
-    page.setDefaultNavigationTimeout(180000); // 3 minutes
-    page.setDefaultTimeout(180000); // 3 minutes
     
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(
@@ -126,7 +121,7 @@ app.post('/generate-report', async (req, res) => {
     
     for (const selector of selectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 30000 });
+        await page.waitForSelector(selector, { timeout: 60000 });
         console.log(`Loaded: ${selector}`);
       } catch {
         console.warn(`Failed to load: ${selector}`);
