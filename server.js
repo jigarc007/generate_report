@@ -84,14 +84,13 @@ app.post('/generate-report', async (req, res) => {
     const reportUrl = `${baseURL}/render-chart?${queryParams}`;
     console.log("Opening URL:", reportUrl);
 
-    await page.setExtraHTTPHeaders({
-      'ngrok-skip-browser-warning': 'true',
-    });
-
     await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
 
     console.log('Navigating...');
-    await page.goto(reportUrl, { waitUntil: 'networkidle0', timeout: 180000 });
+    await page.goto(reportUrl, {
+      waitUntil: 'networkidle2',
+      timeout: 160000,
+    });
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
