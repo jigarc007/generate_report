@@ -128,9 +128,7 @@ app.post('/generate-report', async (req, res) => {
         el.style.transition = 'none';
       });
     });
-
-    await page.waitForTimeout(2000); // give charts time to fully render
-
+    await new Promise(resolve => setTimeout(resolve, 2000));
     console.log('Generating PDF...');
     const pdfBuffer = await page.pdf({
     format: 'A4',
