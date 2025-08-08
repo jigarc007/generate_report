@@ -15,7 +15,7 @@ const supabase = createClient(
 );
 
 app.post('/generate-report', async (req, res) => {
-  let browser;
+  let browser,reportJobId;
   try {
     const {
       jobId,
@@ -33,7 +33,7 @@ app.post('/generate-report', async (req, res) => {
       campaignIds,
       baseURL});
     console.log("Processing job:", jobId);
-
+    reportJobId=jobId;
     await ReportStorage.updateJob(jobId, {
       status: 'Processing',
       progress: 10,
@@ -172,9 +172,10 @@ app.post('/generate-report', async (req, res) => {
 
   } catch (error) {
     console.error('Failed:', error);
+    console.log('error reportjobid:>',reportJobId)
     if (browser) await browser.close();
-    if (jobId) {
-      await ReportStorage.updateJob(jobId, {
+    if (reportJobId) {
+      await ReportStorage.updateJob(reportJobId, {
         status: 'Failed',
         progress: 0,
         error: error.message,
