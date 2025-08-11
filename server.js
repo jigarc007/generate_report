@@ -119,73 +119,79 @@ app.post('/generate-report', async (req, res) => {
     console.log('Generating PDF...');
     // Get and log page content
     const htmlContent = await page.content();
-    console.log('Page HTML snapshot:', htmlContent); // limit to 1k chars for readability
-
-    // Multiple attempts for PDF generation with different strategies
-    let pdfBuffer;
-    let pdfAttempts = 0;
-    const maxPdfAttempts = 3;
+    console.log('Page HTML snapshot:', htmlContent.substring(0, 1000), '...');
     
-    while (pdfAttempts < maxPdfAttempts) {
-      try {
-        pdfAttempts++;
-        console.log(`PDF generation attempt ${pdfAttempts}/${maxPdfAttempts}`);
+    // Multiple attempts for PDF generation with different strategies
+    // let pdfBuffer;
+    // let pdfAttempts = 0;
+    // const maxPdfAttempts = 3;
+    
+    // while (pdfAttempts < maxPdfAttempts) {
+    //   try {
+    //     pdfAttempts++;
+    //     console.log(`PDF generation attempt ${pdfAttempts}/${maxPdfAttempts}`);
         
-        // Strategy 1: Basic PDF with extended timeout
-        if (pdfAttempts === 1) {
-          pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: { top: '0', bottom: '0', left: '0', right: '0' },
-            preferCSSPageSize: true,
-            timeout: 240000 // 4 minutes timeout for PDF generation
-          });
-        }
-        // Strategy 2: Simplified PDF options
-        else if (pdfAttempts === 2) {
-          pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            timeout: 180000 // 3 minutes timeout
-          });
-        }
-        // Strategy 3: Most basic PDF options
-        else {
-          pdfBuffer = await page.pdf({
-            format: 'A4',
-            timeout: 120000 // 2 minutes timeout
-          });
-        }
+    //     // Strategy 1: Basic PDF with extended timeout
+    //     if (pdfAttempts === 1) {
+    //       pdfBuffer = await page.pdf({
+    //         format: 'A4',
+    //         printBackground: true,
+    //         margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    //         preferCSSPageSize: true,
+    //         timeout: 240000 // 4 minutes timeout for PDF generation
+    //       });
+    //     }
+    //     // Strategy 2: Simplified PDF options
+    //     else if (pdfAttempts === 2) {
+    //       pdfBuffer = await page.pdf({
+    //         format: 'A4',
+    //         printBackground: true,
+    //         timeout: 180000 // 3 minutes timeout
+    //       });
+    //     }
+    //     // Strategy 3: Most basic PDF options
+    //     else {
+    //       pdfBuffer = await page.pdf({
+    //         format: 'A4',
+    //         timeout: 120000 // 2 minutes timeout
+    //       });
+    //     }
         
-        console.log(`PDF generated successfully on attempt ${pdfAttempts}`);
-        break;
+    //     console.log(`PDF generated successfully on attempt ${pdfAttempts}`);
+    //     break;
         
-      } catch (pdfError) {
-        console.log(`PDF attempt ${pdfAttempts} failed:`, pdfError.message);
+    //   } catch (pdfError) {
+    //     console.log(`PDF attempt ${pdfAttempts} failed:`, pdfError.message);
         
-        if (pdfAttempts === maxPdfAttempts) {
-          throw new Error(`PDF generation failed after ${maxPdfAttempts} attempts. Last error: ${pdfError.message}`);
-        }
+    //     if (pdfAttempts === maxPdfAttempts) {
+    //       throw new Error(`PDF generation failed after ${maxPdfAttempts} attempts. Last error: ${pdfError.message}`);
+    //     }
         
-        // Wait before next attempt
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-
+    //     // Wait before next attempt
+    //     await new Promise(resolve => setTimeout(resolve, 2000));
+    //   }
+    // }
+     pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+      timeout: 160000 // 4 minutes timeout for PDF generation
+    });
     await browser.close();
     browser = null;
 
     const filename = `report-${jobId}.pdf`;
     const path = `${brandId}/${filename}`;
+      console.log('uploaded pdf file name-----------:>',filename,path)
 
-    const { error: uploadError } = await supabase
+    const { error: uploadError, data } = await supabase
       .storage
       .from('Creatives/brand-uploaded')
       .upload(path, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: true,
       });
-
+      console.log('uploaded pdf-----------:>',data)
     if (uploadError) {
       console.log({ uploadError });
       throw uploadError;
