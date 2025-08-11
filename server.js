@@ -117,7 +117,10 @@ app.post('/generate-report', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log('Generating PDF...');
-    
+    // Get and log page content
+    const htmlContent = await page.content();
+    console.log('Page HTML snapshot:', htmlContent); // limit to 1k chars for readability
+
     // Multiple attempts for PDF generation with different strategies
     let pdfBuffer;
     let pdfAttempts = 0;
