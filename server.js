@@ -20,19 +20,15 @@ app.post('/generate-report', async (req, res) => {
     const {
       jobId,
       baseURL,
-      level,
       brandId,
-      locationIds,
-      campaignIds
+      selectors
     } = req.body;
     
     console.log('payload body:>', {
       jobId,
       brandId,
-      level,
-      locationIds,
-      campaignIds,
-      baseURL
+      baseURL,
+      selectors
     });
     
     console.log("Processing job:", jobId);
@@ -95,27 +91,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { visible: true, timeout: 180000 });
 
-    const chartSelectors = [
-      'Age & Gender Split Bar Chart',
-      'Age & Gender Split Pie Chart',
-      'Best Time Chart',
-      'Device Split Chart',
-    ];
-    
-    let selectors = [];
-    if (level === "Location Level") {
-      locationIds?.forEach((location) => {
-        selectors?.push(`[id="${location?.value}"]`)
-      })
-    } else if (level === "Campaign Level") {
-      campaignIds?.forEach((campaign) => {
-        selectors?.push(`[id="${campaign?.value}"]`)
-      })
-    } else {
-      selectors = chartSelectors
-    }
-    
-    console.log({ selectors });
+   
     console.log('Waiting for charts...');
     
     for (const selector of selectors) {
