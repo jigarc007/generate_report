@@ -89,73 +89,30 @@ async function launchOptimizedBrowser() {
       '--blink-settings=imagesEnabled=false'
     ],
     executablePath: executablePath,
-    timeout: 300000, // 5 minutes
-    defaultViewport: null,
+   defaultViewport: null,
     ignoreHTTPSErrors: true,
+     timeout: 600000, // 10 minutes for browser launch
+  protocolTimeout: 600000 // Add this for protocol level timeouts
   };
   
   return await puppeteer.launch(launchOptions);
 }
 
 // Optimized PDF generation function for large documents
-async function generateLargePDF(page, options = {}) {
-  const defaultOptions = {
-    format: 'A4',
-    printBackground: true,
-    margin: { top: '0', bottom: '0', left: '0', right: '0' },
-    preferCSSPageSize: true,
-    timeout: 1200000, // 20 minutes for very large PDFs
-    omitBackground: false,
-    pageRanges: '',
-  };
-  
-  const pdfOptions = { ...defaultOptions, ...options };
-  
-  // Multiple attempt strategy with different configurations
-  const strategies = [
-    // Strategy 1: Full quality
-    { ...pdfOptions },
-    
-    // Strategy 2: Reduced timeout, disable some features
-    { 
-      ...pdfOptions, 
-      timeout: 600000, // 10 minutes
-      omitBackground: true 
-    },
-    
-    // Strategy 3: Basic configuration
-    { 
+// Try a simpler PDF generation approach first
+async function generateLargePDF(page) {
+  // First try basic generation
+  try {
+    return await page.pdf({
       format: 'A4',
-      printBackground: false,
-      timeout: 300000, // 5 minutes
-      margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
-    }
-  ];
-  
-  for (let i = 0; i < strategies.length; i++) {
-    try {
-      console.log(`PDF generation attempt ${i + 1}/${strategies.length} with options:`, strategies[i]);
-      const startTime = Date.now();
-      const pdfBuffer = await page.pdf(strategies[i]);
-      console.log(`PDF generated successfully with strategy ${i + 1} (${pdfBuffer.length} bytes, took ${(Date.now() - startTime)/1000}s)`);
-      return pdfBuffer;
-    } catch (error) {
-      console.error(`PDF generation attempt ${i + 1} failed:`, {
-        error: error.message,
-        stack: error.stack,
-        strategy: strategies[i]
-      });
-      
-      if (i === strategies.length - 1) {
-        throw new Error(`All PDF generation attempts failed. Last error: ${error.message}`);
-      }
-      
-      // Clean up memory between attempts
-      forceMemoryCleanup();
-      
-      // Wait before next attempt
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
+      margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+      printBackground: true,
+      timeout: 300000 // 5 minutes
+    });
+  } catch (error) {
+    console.log('Simple PDF generation failed, trying optimized approach');
+    // Fall back to your existing strategies
+    return await alternativePDFGeneration(page);
   }
 }
 
@@ -193,7 +150,7 @@ app.get('/processes', (req, res) => {
 app.post('/generate-report', async (req, res) => {
   let browser, reportJobId, page;
   let heartbeat;
-  
+   isProcessing = true;
   try {
     // Start heartbeat monitoring
     heartbeat = setInterval(() => {
@@ -490,13 +447,15 @@ app.post('/generate-report', async (req, res) => {
     });
   } finally {
     if (heartbeat) clearInterval(heartbeat);
+     isProcessing = false;
   }
 });
 
 // Enhanced health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
-    status: 'ok', 
+      status: isProcessing ? 'processing' : 'ok',
+    processingSince: isProcessing ? processingStartTime : null,
     timestamp: new Date().toISOString(),
     memory: process.memoryUsage(),
     uptime: process.uptime(),
@@ -504,9 +463,22 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Graceful shutdown handling with cleanup
+let isProcessing = false;
+
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
+  console.log('SIGTERM received, waiting for current operations...');
+  if (isProcessing) {
+    console.log('Waiting for current PDF generation to complete...');
+    await new Promise(resolve => {
+      const checkInterval = setInterval(() => {
+        if (!isProcessing) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 1000);
+    });
+  }
+  
   if (globalBrowser) {
     await globalBrowser.close();
   }
