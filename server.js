@@ -369,14 +369,6 @@ app.post('/generate-report', async (req, res) => {
       status: 'Download',
       progress: 100,
       downloadUrl: publicUrl.publicUrl,
-      completedAt: new Date().toISOString(),
-      summary: {
-        totalSelectors: selectors.length,
-        loadedSelectors: loadedSelectors.length,
-        failedSelectors: failedSelectors.length,
-        pdfSize: pdfBuffer.length,
-        estimatedPages: Math.ceil(pdfBuffer.length / (1024 * 200))
-      }
     });
 
     console.log(`Large PDF job ${jobId} completed successfully`);
@@ -412,7 +404,6 @@ app.post('/generate-report', async (req, res) => {
         status: 'Failed',
         progress: 0,
         error: error.message,
-        failedAt: new Date().toISOString()
       });
     }
     
