@@ -4,20 +4,10 @@ const puppeteer = require('puppeteer');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { ReportStorage } = require('./reportStorage');
-const { execSync } = require('child_process');
 
 const app = express();
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.json({ limit: '50mb' })); // Increase payload limit for large requests
 
-// Resource monitoring middleware
-app.use((req, res, next) => {
-  console.log('Current process memory:', {
-    rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
-    heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
-    heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`
-  });
-  next();
-});
 // Setup Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -28,69 +18,148 @@ const supabase = createClient(
 let globalBrowser = null;
 
 // Utility function for safe job updates
-// Wrap your Supabase operations in try-catch
-
+async function safeUpdateJob(jobId, updates) {
+  try {
+    await ReportStorage.updateJob(jobId, updates);
+  } catch (error) {
+    console.error(`Failed to update job ${jobId}:`, error);
+  }
+}
 
 // Enhanced browser launch for large PDF generation
 async function launchOptimizedBrowser() {
-  try {
-    const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-    
-    // Add connection check
-    const { data, error } = await supabase
-      .from('system_checks')
-      .select('*')
-      .limit(1);
-    
-    if (error) throw new Error('Supabase connection failed');
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--single-process' // Important for stability
-      ],
-      executablePath,
-      timeout: 60000
-    });
-    
-    return browser;
-  } catch (error) {
-    console.error('Browser launch failed:', error);
-    throw error;
-  }
+  const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+  
+  const launchOptions = {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-webgl',
+      '--disable-extensions',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-features=TranslateUI',
+      '--disable-ipc-flooding-protection',
+      // Memory optimizations for large PDFs
+      '--memory-pressure-off',
+      '--max_old_space_size=8192', // Increase Node.js memory limit
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-translate',
+      // Resource limits
+      '--max-memory-usage=4096',
+      '--aggressive-cache-discard',
+      '--disable-blink-features=AutomationControlled'
+    ],
+    executablePath: executablePath,
+    timeout: 120000,
+    // Increase default memory limits
+    defaultViewport: null,
+    ignoreHTTPSErrors: true,
+  };
+  
+  return await puppeteer.launch(launchOptions);
 }
 
 // Optimized PDF generation function for large documents
-// Try a simpler PDF generation approach first
-async function generateLargePDF(page) {
-  // First try basic generation
-  try {
-    return await page.pdf({
-      format: 'A4',
-      margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
-      printBackground: true,
-      timeout: 300000 // 5 minutes
-    });
-  } catch (error) {
-    console.log('Simple PDF generation failed, trying optimized approach',error);
-    // Fall back to your existing strategies
-    return await alternativePDFGeneration(page);
-  }
-}
-
-// Alternative PDF generation approach
-async function alternativePDFGeneration(page) {
-  console.log('Attempting alternative PDF generation method');
-  await page.emulateMediaType('print');
-  return await page.pdf({
+async function generateLargePDF(page, options = {}) {
+  const defaultOptions = {
     format: 'A4',
     printBackground: true,
-    margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
-    timeout: 0 // No timeout
-  });
+    margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    preferCSSPageSize: true,
+    timeout: 300000, // 5 minutes - reduced from 10 for better reliability
+    omitBackground: false,
+    pageRanges: '', // Generate all pages
+  };
+  
+  const pdfOptions = { ...defaultOptions, ...options };
+  
+  // Multiple attempt strategy with different configurations
+  const strategies = [
+    // Strategy 1: Optimized quality with reasonable timeout
+    { 
+      ...pdfOptions,
+      timeout: 180000, // 3 minutes
+      printBackground: true,
+      preferCSSPageSize: true
+    },
+    
+    // Strategy 2: Reduced features for compatibility
+    { 
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '5mm', bottom: '5mm', left: '5mm', right: '5mm' },
+      timeout: 120000, // 2 minutes
+      omitBackground: false
+    },
+    
+    // Strategy 3: Most basic configuration
+    { 
+      format: 'A4',
+      printBackground: false,
+      timeout: 60000, // 1 minute
+      margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
+    }
+  ];
+  
+  for (let i = 0; i < strategies.length; i++) {
+    try {
+      console.log(`PDF generation attempt ${i + 1}/${strategies.length} with options:`, {
+        format: strategies[i].format,
+        timeout: strategies[i].timeout,
+        printBackground: strategies[i].printBackground,
+        margin: strategies[i].margin
+      });
+      
+      // Pre-generation checks
+      const pageContent = await page.content();
+      console.log(`Page content length: ${pageContent.length} characters`);
+      
+      const startTime = Date.now();
+      const pdfBuffer = await page.pdf(strategies[i]);
+      const endTime = Date.now();
+      
+      console.log(`PDF generated successfully with strategy ${i + 1}:`, {
+        size: `${pdfBuffer.length} bytes (${Math.round(pdfBuffer.length / 1024)} KB)`,
+        duration: `${endTime - startTime}ms`,
+        estimatedPages: Math.ceil(pdfBuffer.length / (1024 * 50)) // Rough estimate
+      });
+      
+      return pdfBuffer;
+      
+    } catch (error) {
+      console.error(`PDF generation attempt ${i + 1} failed:`, {
+        error: error.message,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n'), // First 3 lines of stack
+        strategy: i + 1
+      });
+      
+      if (i === strategies.length - 1) {
+        // Last attempt failed, throw comprehensive error
+        throw new Error(`All ${strategies.length} PDF generation attempts failed. Last error: ${error.message}. Suggestions: 1) Check page content size, 2) Verify all elements are loaded, 3) Consider reducing page complexity.`);
+      }
+      
+      // Clean up memory between attempts
+      if (global.gc) {
+        console.log('Running garbage collection between PDF attempts...');
+        global.gc();
+      }
+      
+      // Wait before next attempt
+      console.log(`Waiting 3 seconds before attempt ${i + 2}...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
 }
 
 // Memory cleanup utility
@@ -101,28 +170,10 @@ function forceMemoryCleanup() {
   }
 }
 
-// Process monitoring endpoint
-app.get('/processes', (req, res) => {
-  const { exec } = require('child_process');
-  exec('ps aux | grep chrome', (error, stdout, stderr) => {
-    res.json({
-      processes: stdout.toString().split('\n'),
-      error: error ? error.message : null
-    });
-  });
-});
-
 app.post('/generate-report', async (req, res) => {
   let browser, reportJobId, page;
-  let heartbeat;
-   isProcessing = true;
+  
   try {
-    // Start heartbeat monitoring
-    heartbeat = setInterval(() => {
-      console.log('PDF generation heartbeat:', new Date().toISOString(), 
-        'Memory usage:', process.memoryUsage());
-    }, 30000);
-
     const { jobId, baseURL, brandId, selectors } = req.body;
     
     // Validate required fields
@@ -136,12 +187,12 @@ app.post('/generate-report', async (req, res) => {
       brandId,
       baseURL,
       selectorCount: selectors.length,
-      estimatedPages: Math.ceil(selectors.length / 5)
+      estimatedPages: Math.ceil(selectors.length / 5) // Rough estimate
     });
     
     reportJobId = jobId;
     
-    await ReportStorage.updateJob(jobId, {
+    await safeUpdateJob(jobId, {
       status: 'Processing',
       progress: 5,
     });
@@ -151,72 +202,71 @@ app.post('/generate-report', async (req, res) => {
     browser = await launchOptimizedBrowser();
     page = await browser.newPage();
     
-    // Add page error listeners
-    page.on('error', err => {
-      console.error('Page error:', err);
-    });
-
-    page.on('pageerror', err => {
-      console.error('Page error:', err);
-    });
-
-    page.on('console', msg => {
-      console.log('Browser console:', msg.text());
-    });
-
     // Optimize page for large content
     await page.setViewport({ width: 1200, height: 800 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
     );
 
-    // Set extended timeouts
-    await page.setDefaultNavigationTimeout(300000); // 5 minutes
-    await page.setDefaultTimeout(300000); // 5 minutes
+    // Set page timeouts for large content (reduced for better reliability)
+    await page.setDefaultNavigationTimeout(180000); // 3 minutes
+    await page.setDefaultTimeout(120000); // 2 minutes
 
     // Intercept requests to optimize loading
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
+      // Block unnecessary resources for PDF generation
       if (['image', 'font', 'stylesheet'].includes(resourceType)) {
+        // Allow but with lower priority
         request.continue();
       } else if (['media', 'websocket', 'other'].includes(resourceType)) {
+        // Block non-essential resources
         request.abort();
       } else {
         request.continue();
       }
     });
 
+    // Error handling
+    page.on('error', (error) => {
+      console.error('Page error:', error);
+    });
+
+    page.on('pageerror', (error) => {
+      console.error('Page script error:', error);
+    });
+
     // Build report URL
     const queryParams = new URLSearchParams({
       jobId,
       isReport: 'true',
-      largePdf: 'true',
+      largePdf: 'true', // Signal to the frontend
     });
     const reportUrl = `${baseURL}/render-chart?${queryParams}`;
     
     console.log('Navigating to large content:', reportUrl);
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 10 });
+    await safeUpdateJob(jobId, { status: 'Processing', progress: 10 });
 
     // Navigate with extended timeout
     await page.goto(reportUrl, {
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'domcontentloaded', // Less strict than networkidle2 for large content
       timeout: 300000, // 5 minutes
     });
 
     console.log('Waiting for main container...');
     await page.waitForSelector('#report-home-page', { 
       visible: true, 
-      timeout: 300000
+      timeout: 300000 // 5 minutes for large content
     });
 
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
+    await safeUpdateJob(jobId, { status: 'Processing', progress: 20 });
 
     // Load selectors with patience for large content
-    console.log('Loading chart selectors...');
+    console.log('Loading large number of chart selectors...');
     const loadedSelectors = [];
     const failedSelectors = [];
-    const batchSize = 10;
+    const batchSize = 10; // Process selectors in batches
     
     for (let i = 0; i < selectors.length; i += batchSize) {
       const batch = selectors.slice(i, i + batchSize);
@@ -235,21 +285,25 @@ app.post('/generate-report', async (req, res) => {
         })
       );
       
+      // Update progress during batch processing
       const progress = 20 + Math.floor((i / selectors.length) * 50);
-      await ReportStorage.updateJob(jobId, { status: 'Processing', progress });
+      await safeUpdateJob(jobId, { status: 'Processing', progress });
       
+      // Memory cleanup between batches
       if (i > 0 && i % (batchSize * 3) === 0) {
         forceMemoryCleanup();
       }
     }
 
     console.log(`Selector loading summary: ${loadedSelectors.length}/${selectors.length} loaded`);
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 75 });
+    await safeUpdateJob(jobId, { status: 'Processing', progress: 75 });
 
     // Optimize page for PDF generation
     console.log('Optimizing page for large PDF generation...');
     
+    // Disable all animations and transitions more aggressively
     await page.evaluate(() => {
+      // Create comprehensive CSS to disable animations
       const style = document.createElement('style');
       style.textContent = `
         *, *::before, *::after {
@@ -261,6 +315,7 @@ app.post('/generate-report', async (req, res) => {
           transition-timing-function: linear !important;
         }
         
+        /* Optimize for PDF printing */
         @media print {
           * {
             -webkit-print-color-adjust: exact !important;
@@ -268,33 +323,61 @@ app.post('/generate-report', async (req, res) => {
           }
         }
         
+        /* Reduce memory usage */
         img {
           image-rendering: optimizeSpeed !important;
         }
       `;
       document.head.appendChild(style);
+      
+      // Force layout recalculation
       document.body.offsetHeight;
     });
 
+    // Wait for final rendering with extended time for large content
     console.log('Waiting for final rendering of large content...');
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 85 });
+    await safeUpdateJob(jobId, { status: 'Processing', progress: 85 });
 
     // Force memory cleanup before PDF generation
     forceMemoryCleanup();
 
     console.log('Generating large PDF...');
     
+    // Use optimized PDF generation with better error handling
     let pdfBuffer;
     try {
-      pdfBuffer = await generateLargePDF(page);
-    } catch (error) {
-      console.log('Falling back to alternative PDF generation method');
-      pdfBuffer = await alternativePDFGeneration(page);
+      // Check page state before PDF generation
+      const pageTitle = await page.title();
+      const url = page.url();
+      console.log('Page state before PDF generation:', { title: pageTitle, url });
+      
+      // Verify content is still loaded
+      const mainContainer = await page.$('#report-home-page');
+      if (!mainContainer) {
+        throw new Error('Main container no longer found on page');
+      }
+      
+      pdfBuffer = await generateLargePDF(page, {
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '5mm', bottom: '5mm', left: '5mm', right: '5mm' },
+        preferCSSPageSize: true,
+        timeout: 180000, // 3 minutes - more realistic timeout
+      });
+      
+    } catch (pdfError) {
+      console.error('PDF generation error details:', {
+        message: pdfError.message,
+        jobId,
+        selectors: selectors.length,
+        loadedSelectors: loadedSelectors.length
+      });
+      throw pdfError;
     }
 
-    console.log(`PDF generated successfully (${pdfBuffer.length} bytes)`);
+    console.log(`Large PDF generated successfully (${pdfBuffer.length} bytes, ~${Math.ceil(pdfBuffer.length / (1024 * 200))} estimated pages)`);
     
     // Close browser immediately after PDF generation
     await browser.close();
@@ -304,7 +387,7 @@ app.post('/generate-report', async (req, res) => {
     // Force cleanup after PDF generation
     forceMemoryCleanup();
 
-    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 95 });
+    await safeUpdateJob(jobId, { status: 'Processing', progress: 95 });
 
     // Upload to Supabase with retry for large files
     const filename = `large-report-${jobId}.pdf`;
@@ -321,7 +404,7 @@ app.post('/generate-report', async (req, res) => {
         uploadAttempts++;
         console.log(`Upload attempt ${uploadAttempts}/${maxUploadAttempts}`);
         
-        const { error: uploadError } = await supabase
+        const { error: uploadError, data } = await supabase
           .storage
           .from('Creatives/brand-uploaded')
           .upload(path, pdfBuffer, {
@@ -329,9 +412,11 @@ app.post('/generate-report', async (req, res) => {
             upsert: true,
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          throw uploadError;
+        }
 
-        console.log('Large PDF upload successful');
+        console.log('Large PDF upload successful:', data);
         uploadSuccess = true;
         
       } catch (uploadError) {
@@ -341,6 +426,7 @@ app.post('/generate-report', async (req, res) => {
           throw new Error(`Upload failed after ${maxUploadAttempts} attempts: ${uploadError.message}`);
         }
         
+        // Wait before retry
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
@@ -352,11 +438,11 @@ app.post('/generate-report', async (req, res) => {
       .getPublicUrl(path);
 
     // Final job update
-    await ReportStorage.updateJob(jobId, {
+    await safeUpdateJob(jobId, {
       status: 'Download',
       progress: 100,
-      downloadUrl: publicUrl.publicUrl,
-    });
+      download_url: publicUrl.publicUrl,
+     });
 
     console.log(`Large PDF job ${jobId} completed successfully`);
     res.json({ 
@@ -387,7 +473,7 @@ app.post('/generate-report', async (req, res) => {
     
     // Update job status
     if (reportJobId) {
-      await ReportStorage.updateJob(reportJobId, {
+      await safeUpdateJob(reportJobId, {
         status: 'Failed',
         progress: 0,
         error: error.message,
@@ -401,40 +487,22 @@ app.post('/generate-report', async (req, res) => {
       jobId: reportJobId,
       suggestion: 'Consider reducing content size or splitting into smaller PDFs'
     });
-  } finally {
-    if (heartbeat) clearInterval(heartbeat);
-     isProcessing = false;
   }
 });
 
-// Enhanced health check endpoint
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
-      status: isProcessing ? 'processing' : 'ok',
-    processingSince: isProcessing ? processingStartTime : null,
+    status: 'ok', 
     timestamp: new Date().toISOString(),
     memory: process.memoryUsage(),
-    uptime: process.uptime(),
-    chrome: process.env.CHROME_EXECUTABLE_PATH || 'default'
+    uptime: process.uptime()
   });
 });
 
-let isProcessing = false;
-
+// Graceful shutdown handling with cleanup
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, waiting for current operations...');
-  if (isProcessing) {
-    console.log('Waiting for current PDF generation to complete...');
-    await new Promise(resolve => {
-      const checkInterval = setInterval(() => {
-        if (!isProcessing) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 1000);
-    });
-  }
-  
+  console.log('SIGTERM received, shutting down gracefully...');
   if (globalBrowser) {
     await globalBrowser.close();
   }
@@ -450,17 +518,8 @@ process.on('SIGINT', async () => {
 });
 
 const PORT = process.env.PORT || 3001;
-const server = app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Large PDF Generator running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-});
-
-// Handle server errors
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-    process.exit(1);
-  } else {
-    console.error('Server error:', error);
-  }
+  console.log('Optimized for large PDF generation (100+ pages)');
 });
