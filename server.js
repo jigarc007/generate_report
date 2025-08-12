@@ -11,16 +11,13 @@ app.use(bodyParser.json({ limit: '50mb' }));
 
 // Resource monitoring middleware
 app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    console.log(`Request took ${Date.now() - start}ms`, {
-      memory: process.memoryUsage(),
-      cpu: process.cpuUsage()
-    });
+  console.log('Current process memory:', {
+    rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
+    heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
+    heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`
   });
   next();
 });
-
 // Setup Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -31,71 +28,52 @@ const supabase = createClient(
 let globalBrowser = null;
 
 // Utility function for safe job updates
+// Wrap your Supabase operations in try-catch
 async function safeUpdateJob(jobId, updates) {
   try {
-    await ReportStorage.updateJob(jobId, updates);
+    const { data, error } = await supabase
+      .from('report_jobs')
+      .update(updates)
+      .eq('id', jobId);
+    
+    if (error) throw error;
+    return data;
   } catch (error) {
-    console.error(`Failed to update job ${jobId}:`, error);
+    console.error('Database update failed:', error);
+    throw error;
   }
 }
 
 // Enhanced browser launch for large PDF generation
 async function launchOptimizedBrowser() {
-  const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-  
-  // Verify Chrome installation
   try {
-    const chromeVersion = execSync(`${executablePath} --version`).toString();
-    console.log('Chrome version:', chromeVersion.trim());
-  } catch (e) {
-    console.error('Chrome not found at path:', executablePath);
-    throw new Error(`Chrome executable not found at ${executablePath}`);
-  }
+    const executablePath = process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+    
+    // Add connection check
+    const { data, error } = await supabase
+      .from('system_checks')
+      .select('*')
+      .limit(1);
+    
+    if (error) throw new Error('Supabase connection failed');
 
-  const launchOptions = {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-webgl',
-      '--disable-extensions',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      '--disable-features=TranslateUI',
-      '--disable-ipc-flooding-protection',
-      // Memory optimizations
-      '--memory-pressure-off',
-      '--max_old_space_size=8192',
-      '--disable-background-networking',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--disable-translate',
-      // Additional optimizations
-      '--disable-software-rasterizer',
-      '--disable-skia-runtime-opts',
-      '--disable-threaded-animation',
-      '--disable-threaded-scrolling',
-      '--disable-checker-imaging',
-      '--disable-partial-raster',
-      '--disable-composited-antialiasing',
-      '--disable-image-animation-resync',
-      '--blink-settings=imagesEnabled=false'
-    ],
-    executablePath: executablePath,
-   defaultViewport: null,
-    ignoreHTTPSErrors: true,
-     timeout: 600000, // 10 minutes for browser launch
-  protocolTimeout: 600000 // Add this for protocol level timeouts
-  };
-  
-  return await puppeteer.launch(launchOptions);
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process' // Important for stability
+      ],
+      executablePath,
+      timeout: 60000
+    });
+    
+    return browser;
+  } catch (error) {
+    console.error('Browser launch failed:', error);
+    throw error;
+  }
 }
 
 // Optimized PDF generation function for large documents
@@ -110,7 +88,7 @@ async function generateLargePDF(page) {
       timeout: 300000 // 5 minutes
     });
   } catch (error) {
-    console.log('Simple PDF generation failed, trying optimized approach');
+    console.log('Simple PDF generation failed, trying optimized approach',error);
     // Fall back to your existing strategies
     return await alternativePDFGeneration(page);
   }
@@ -494,9 +472,17 @@ process.on('SIGINT', async () => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Large PDF Generator running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Process monitor: http://localhost:${PORT}/processes`);
-  console.log('Optimized for large PDF generation (100+ pages)');
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', error);
+  }
 });
