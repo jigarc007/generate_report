@@ -29,20 +29,7 @@ let globalBrowser = null;
 
 // Utility function for safe job updates
 // Wrap your Supabase operations in try-catch
-async function safeUpdateJob(jobId, updates) {
-  try {
-    const { data, error } = await supabase
-      .from('report_jobs')
-      .update(updates)
-      .eq('id', jobId);
-    
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Database update failed:', error);
-    throw error;
-  }
-}
+
 
 // Enhanced browser launch for large PDF generation
 async function launchOptimizedBrowser() {
@@ -154,7 +141,7 @@ app.post('/generate-report', async (req, res) => {
     
     reportJobId = jobId;
     
-    await safeUpdateJob(jobId, {
+    await ReportStorage.updateJob(jobId, {
       status: 'Processing',
       progress: 5,
     });
@@ -209,7 +196,7 @@ app.post('/generate-report', async (req, res) => {
     const reportUrl = `${baseURL}/render-chart?${queryParams}`;
     
     console.log('Navigating to large content:', reportUrl);
-    await safeUpdateJob(jobId, { status: 'Processing', progress: 10 });
+    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 10 });
 
     // Navigate with extended timeout
     await page.goto(reportUrl, {
@@ -223,7 +210,7 @@ app.post('/generate-report', async (req, res) => {
       timeout: 300000
     });
 
-    await safeUpdateJob(jobId, { status: 'Processing', progress: 20 });
+    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 20 });
 
     // Load selectors with patience for large content
     console.log('Loading chart selectors...');
@@ -249,7 +236,7 @@ app.post('/generate-report', async (req, res) => {
       );
       
       const progress = 20 + Math.floor((i / selectors.length) * 50);
-      await safeUpdateJob(jobId, { status: 'Processing', progress });
+      await ReportStorage.updateJob(jobId, { status: 'Processing', progress });
       
       if (i > 0 && i % (batchSize * 3) === 0) {
         forceMemoryCleanup();
@@ -257,7 +244,7 @@ app.post('/generate-report', async (req, res) => {
     }
 
     console.log(`Selector loading summary: ${loadedSelectors.length}/${selectors.length} loaded`);
-    await safeUpdateJob(jobId, { status: 'Processing', progress: 75 });
+    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 75 });
 
     // Optimize page for PDF generation
     console.log('Optimizing page for large PDF generation...');
@@ -292,7 +279,7 @@ app.post('/generate-report', async (req, res) => {
     console.log('Waiting for final rendering of large content...');
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    await safeUpdateJob(jobId, { status: 'Processing', progress: 85 });
+    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 85 });
 
     // Force memory cleanup before PDF generation
     forceMemoryCleanup();
@@ -317,7 +304,7 @@ app.post('/generate-report', async (req, res) => {
     // Force cleanup after PDF generation
     forceMemoryCleanup();
 
-    await safeUpdateJob(jobId, { status: 'Processing', progress: 95 });
+    await ReportStorage.updateJob(jobId, { status: 'Processing', progress: 95 });
 
     // Upload to Supabase with retry for large files
     const filename = `large-report-${jobId}.pdf`;
@@ -365,7 +352,7 @@ app.post('/generate-report', async (req, res) => {
       .getPublicUrl(path);
 
     // Final job update
-    await safeUpdateJob(jobId, {
+    await ReportStorage.updateJob(jobId, {
       status: 'Download',
       progress: 100,
       downloadUrl: publicUrl.publicUrl,
@@ -400,7 +387,7 @@ app.post('/generate-report', async (req, res) => {
     
     // Update job status
     if (reportJobId) {
-      await safeUpdateJob(reportJobId, {
+      await ReportStorage.updateJob(reportJobId, {
         status: 'Failed',
         progress: 0,
         error: error.message,
